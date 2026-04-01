@@ -1,0 +1,9 @@
+streamlit
+anthropic
+python-dotenv
+elevenlabs
+requests
+chromadb
+sentence-transformers
+audio-recorder-streamlit
+numpy
