@@ -112,6 +112,11 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         print("STATUS:", response.status_code)
         print("RESPONSE:", response.text)
 
+        # ← ONLY CHANGE: explicit status check before raise_for_status
+        if response.status_code != 200:
+            print("❌ Sarvam rejected:", response.text)
+            return ""
+
         response.raise_for_status()
 
         result = response.json()
