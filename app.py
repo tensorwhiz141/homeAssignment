@@ -19,7 +19,7 @@ st.set_page_config(
 
 # ── Session State Init ───────────────────────────────────
 if "agent" not in st.session_state:
-    st.session_state.agent = LoanCounselorAgent()
+    st.session_state.agent = LoanAgent()
 if "transcript" not in st.session_state:
     st.session_state.transcript = []
 if "debug" not in st.session_state:
@@ -223,7 +223,7 @@ with col_debug:
     st.markdown("---")
 
     if st.button("🔄 Reset Conversation", use_container_width=True):
-        st.session_state.agent = LoanCounselorAgent()
+        st.session_state.agent = LoanAgent()
         st.session_state.transcript = []
         st.session_state.debug = {}
         st.session_state.session_id = generate_session_id()
