@@ -25,19 +25,18 @@ if "transcript" not in st.session_state:
 if "debug" not in st.session_state:
     st.session_state.debug = {}
 
-# ✅ Session ID
 if "session_id" not in st.session_state:
     st.session_state.session_id = generate_session_id()
 
 
-# ── Core pipeline function ────────────────────────────────
+# ── Core pipeline ─────────────────────────────────────────
 def process_message(user_message: str):
     """Message → RAG → LLM → TTS → DB → update state."""
 
     # Save user message
     save_message(st.session_state.session_id, "user", user_message)
 
-    # RAG context injection
+    # RAG
     agent_input = user_message
     if is_policy_question(user_message):
         rag_context = retrieve_context(user_message)
@@ -60,7 +59,7 @@ def process_message(user_message: str):
     # Save assistant message
     save_message(st.session_state.session_id, "assistant", response_text)
 
-    # Save/update lead
+    # Save lead
     save_lead(
         session_id=st.session_state.session_id,
         extracted_data=result.get("extracted_data", {}),
@@ -82,7 +81,7 @@ def process_message(user_message: str):
             result.get("locked_language", "english")
         )
 
-    # Add assistant response
+    # Add response
     st.session_state.transcript.append({
         "role": "assistant",
         "text": response_text,
@@ -92,21 +91,20 @@ def process_message(user_message: str):
     st.rerun()
 
 
-# ── Layout ────────────────────────────────────────────────
+# ── UI ───────────────────────────────────────────────────
 st.title("🏠 HomeFirst Vernacular Loan Counselor")
 st.caption("Speak or type in English, Hindi, Marathi, or Tamil")
 
-# Handoff banner
+# Handoff alert
 if st.session_state.debug.get("handoff_triggered"):
     st.error("🚨 [HANDOFF TRIGGERED: Routing to Human RM]")
 
 col_chat, col_debug = st.columns([2, 1])
 
-# ── LEFT: Chat ────────────────────────────────────────────
+# ── CHAT ─────────────────────────────────────────────────
 with col_chat:
     st.subheader("💬 Conversation")
 
-    # Render transcript
     for turn in st.session_state.transcript:
         if turn["role"] == "user":
             st.chat_message("user").write(turn["text"])
@@ -122,6 +120,7 @@ with col_chat:
     st.markdown("#### 🎙️ Push to Talk")
     try:
         from streamlit_mic_recorder import mic_recorder
+        from voice import convert_to_wav
 
         audio_data = mic_recorder(
             start_prompt="🎙️ Click to Record",
@@ -132,20 +131,32 @@ with col_chat:
         if audio_data and audio_data.get("bytes"):
             audio_bytes = audio_data["bytes"]
 
+            # Debug
+            st.write(f"📊 Audio size: {len(audio_bytes)} bytes")
+
             if len(audio_bytes) > 1000:
                 locked_lang = st.session_state.agent.locked_language or "english"
 
+                # Convert audio
+                with st.spinner("🔄 Converting audio..."):
+                    wav_bytes = convert_to_wav(audio_bytes)
+
+                st.write(f"📊 WAV size: {len(wav_bytes)} bytes")
+
+                # Transcribe
                 with st.spinner("🎧 Transcribing..."):
-                    transcribed = transcribe_audio(audio_bytes, locked_lang)
+                    transcribed = transcribe_audio(wav_bytes, locked_lang)
 
                 if transcribed:
                     st.info(f"📝 You said: *{transcribed}*")
                     process_message(transcribed)
                 else:
-                    st.warning("Could not transcribe. Please try again.")
+                    st.warning("Could not transcribe. Please speak clearly and try again.")
+            else:
+                st.warning("Audio too short. Please hold and speak longer.")
 
     except ImportError:
-        st.warning("Run: pip install streamlit-mic-recorder")
+        st.warning("Run: pip install streamlit-mic-recorder pydub")
 
     # ── Text input ──
     st.markdown("#### ⌨️ Or Type Your Message")
@@ -154,24 +165,20 @@ with col_chat:
         process_message(user_text)
 
 
-# ── RIGHT: Debug panel ────────────────────────────────────
+# ── DEBUG PANEL ──────────────────────────────────────────
 with col_debug:
     st.subheader("🔍 LLM Debug Panel")
 
     d = st.session_state.debug
 
     if d:
-        lang = (d.get("locked_language") or "Detecting...").upper()
-        st.metric("🌐 Locked Language", lang)
-
-        tool_status = "✅ Yes" if d.get("tool_called") else "❌ No"
-        st.metric("🔧 Tool Called", tool_status)
-
-        handoff_status = "🚨 Triggered" if d.get("handoff_triggered") else "⏳ Pending"
-        st.metric("👤 Human Handoff", handoff_status)
+        st.metric("🌐 Locked Language", (d.get("locked_language") or "Detecting").upper())
+        st.metric("🔧 Tool Called", "✅ Yes" if d.get("tool_called") else "❌ No")
+        st.metric("👤 Human Handoff", "🚨 Triggered" if d.get("handoff_triggered") else "⏳ Pending")
 
         st.markdown("---")
         st.markdown("**📊 Extracted JSON:**")
+
         extracted = d.get("extracted_data", {})
         if extracted:
             import json
@@ -185,7 +192,7 @@ with col_debug:
     else:
         st.info("Start a conversation to see debug state here.")
 
-    # ── Leads Dashboard ──
+    # ── Leads dashboard ──
     st.markdown("---")
     if st.button("📋 View All Leads", use_container_width=True):
         leads = get_all_leads()
