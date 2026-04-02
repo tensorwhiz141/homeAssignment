@@ -3,15 +3,10 @@
 import json
 import re
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 
 # ── Configure Gemini ─────────────────────────────────────
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
-
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in secrets")
-
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 # ── Language Detection ───────────────────────────────────
 def detect_language(text: str) -> str:
@@ -77,11 +72,12 @@ class LoanAgent:
         prompt = build_prompt(user_message, self.extracted_data)
 
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt
+            )
 
-            response = model.generate_content(prompt)
-
-            reply = response.text if response else "Sorry, I couldn't respond."
+            reply = response.text
 
             return {
                 "response": reply,
@@ -91,10 +87,10 @@ class LoanAgent:
             }
 
         except Exception as e:
-            print("GEMINI ERROR:", e)
+            print("NEW GEMINI ERROR:", e)
 
             return {
-                "response": "⚠️ Gemini error. Please try again.",
+                "response": f"❌ Gemini failed: {str(e)}",
                 "locked_language": self.locked_language,
                 "extracted_data": self.extracted_data,
                 "handoff_triggered": False
