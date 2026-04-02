@@ -142,24 +142,14 @@ with col_chat:
                 if len(audio_bytes) > 1000:
                     locked_lang = st.session_state.agent.locked_language or "english"
 
-                    # Convert WebM → WAV for Sarvam STT
+                    # Convert WebM → WAV using convert_to_wav from voice.py
                     with st.spinner("🔄 Converting audio format..."):
-                        try:
-                            from pydub import AudioSegment
-                            audio_seg = AudioSegment.from_file(
-                                io.BytesIO(audio_bytes), format="webm"
-                            )
-                            wav_io = io.BytesIO()
-                            audio_seg.export(wav_io, format="wav")
-                            wav_bytes = wav_io.getvalue()
-                            st.write(f"📊 Converted WAV: {len(wav_bytes):,} bytes")
-                        except Exception as e:
-                            st.warning(f"Format conversion failed: {e}, trying raw bytes...")
-                            wav_bytes = audio_bytes
+                        wav_bytes = convert_to_wav(audio_bytes)  # ← FIXED
+                    st.write(f"📊 Converted WAV: {len(wav_bytes):,} bytes")
 
-                    # Transcribe
+                    # Send WAV bytes to Sarvam STT
                     with st.spinner("🎧 Transcribing..."):
-                        transcribed = transcribe_audio(wav_bytes, locked_lang)
+                        transcribed = transcribe_audio(wav_bytes, locked_lang)  # ← FIXED
 
                     if transcribed:
                         st.info(f"📝 You said: *{transcribed}*")
