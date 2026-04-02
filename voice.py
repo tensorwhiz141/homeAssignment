@@ -18,13 +18,18 @@ LANGUAGE_CODE_MAP = {
 # ── Speech to Text (WHISPER) ─────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
     """
-    Speech-to-Text using OpenAI Whisper (works perfectly with WebM)
+    Uses OpenAI Whisper — works perfectly with WebM
     """
 
-    print("\n===== WHISPER STT =====")
+    print("\n===== STT DEBUG =====")
+    print("Audio size:", len(audio_bytes))
 
     if not OPENAI_API_KEY:
         print("❌ OPENAI_API_KEY missing")
+        return ""
+
+    if not audio_bytes or len(audio_bytes) < 1000:
+        print("❌ Audio too small")
         return ""
 
     url = "https://api.openai.com/v1/audio/transcriptions"
@@ -33,40 +38,39 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
 
+    # ✅ Send WebM directly (NO conversion)
     files = {
         "file": ("audio.webm", audio_bytes, "audio/webm")
     }
 
     data = {
-        "model": "gpt-4o-mini-transcribe"
+        "model": "whisper-1"
     }
 
     try:
         response = requests.post(url, headers=headers, files=files, data=data)
 
-        print(f"[WHISPER STATUS] {response.status_code}")
-        print(f"[WHISPER RESPONSE] {response.text}")
+        print("STATUS:", response.status_code)
+        print("RESPONSE:", response.text)
 
         response.raise_for_status()
 
         result = response.json()
         transcript = result.get("text", "").strip()
 
-        print(f"[FINAL TRANSCRIPT] {transcript}")
-        print("========================\n")
+        print("FINAL:", transcript)
+        print("=====================\n")
 
         return transcript
 
     except Exception as e:
-        print(f"[WHISPER ERROR] {e}")
+        print("ERROR:", e)
+        print("=====================\n")
         return ""
 
 
 # ── Text to Speech (SARVAM) ──────────────────────────────
 def text_to_speech(text: str, locked_language: str = "english") -> bytes:
-    """
-    Text-to-Speech using Sarvam AI bulbul:v2 model.
-    """
 
     if not SARVAM_API_KEY:
         print("❌ SARVAM_API_KEY missing")
@@ -97,11 +101,9 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
         response = requests.post(url, headers=headers, json=payload)
 
         print(f"[TTS STATUS] {response.status_code}")
-        print(f"[TTS RESPONSE] {response.text[:200]}")
-
         response.raise_for_status()
-        result = response.json()
 
+        result = response.json()
         audio_b64 = result.get("audios", [""])[0]
 
         if audio_b64:
@@ -112,8 +114,3 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
     except Exception as e:
         print(f"[TTS ERROR] {e}")
         return b""
-
-
-# ── Helper ───────────────────────────────────────────────
-def get_language_code(locked_language: str) -> str:
-    return LANGUAGE_CODE_MAP.get(locked_language, "en-IN")

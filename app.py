@@ -1,23 +1,21 @@
-# app.py
 import streamlit as st
-from agent import LoanCounselorAgent
+
+# ── Imports ──────────────────────────────────────────────
+from agent import LoanAgent
 from voice import transcribe_audio, text_to_speech
-from rag import retrieve_context, is_policy_question
+from rag import is_policy_question, retrieve_context
+
 from database import (
     generate_session_id, save_message,
     save_lead, save_handoff, get_all_leads
 )
 
-# ── Page config ──────────────────────────────────────────
-st.set_page_config(
-    page_title="HomeFirst Loan Counselor",
-    page_icon="🏠",
-    layout="wide"
-)
+# ── Page Config ──────────────────────────────────────────
+st.set_page_config(page_title="AI Loan Counselor", layout="wide")
 
-# ── Session state ─────────────────────────────────────────
+# ── Session State Init ───────────────────────────────────
 if "agent" not in st.session_state:
-    st.session_state.agent = LoanCounselorAgent()
+    st.session_state.agent = LoanAgent()
 
 if "transcript" not in st.session_state:
     st.session_state.transcript = []
@@ -28,22 +26,21 @@ if "debug" not in st.session_state:
 if "session_id" not in st.session_state:
     st.session_state.session_id = generate_session_id()
 
-
-# ── Core pipeline ─────────────────────────────────────────
+# ── Core Function ────────────────────────────────────────
 def process_message(user_message: str):
     """Message → RAG → LLM → TTS → DB → update state."""
 
     # Save user message
     save_message(st.session_state.session_id, "user", user_message)
 
-    # RAG context
+    # RAG
     agent_input = user_message
     if is_policy_question(user_message):
         rag_context = retrieve_context(user_message)
         if rag_context:
             agent_input = f"[POLICY CONTEXT: {rag_context}]\n\nUser: {user_message}"
 
-    # Add user to transcript
+    # Add to transcript
     st.session_state.transcript.append({
         "role": "user",
         "text": user_message
@@ -67,7 +64,7 @@ def process_message(user_message: str):
         handoff_triggered=result.get("handoff_triggered", False)
     )
 
-    # Save handoff if triggered
+    # Save handoff
     if result.get("handoff_triggered"):
         save_handoff(
             session_id=st.session_state.session_id,
@@ -81,7 +78,7 @@ def process_message(user_message: str):
             result.get("locked_language", "english")
         )
 
-    # Add assistant to transcript
+    # Add assistant response
     st.session_state.transcript.append({
         "role": "assistant",
         "text": response_text,
@@ -90,35 +87,30 @@ def process_message(user_message: str):
 
     st.rerun()
 
+# ── UI Layout ────────────────────────────────────────────
+col_chat, col_debug = st.columns([3, 1])
 
-# ── UI ───────────────────────────────────────────────────
-st.title("🏠 HomeFirst Vernacular Loan Counselor")
-st.caption("Speak or type in English, Hindi, Marathi, or Tamil")
-
-# Handoff alert
-if st.session_state.debug.get("handoff_triggered"):
-    st.error("🚨 Handoff triggered: Routing to Human RM")
-
-col_chat, col_debug = st.columns([2, 1])
-
-
-# ── CHAT SECTION ─────────────────────────────────────────
+# ── Chat Section ─────────────────────────────────────────
 with col_chat:
-    st.subheader("💬 Conversation")
+    st.title("🏦 AI Loan Counselor")
 
-    for turn in st.session_state.transcript:
-        if turn["role"] == "user":
-            st.chat_message("user").write(turn["text"])
+    # Display chat
+    for msg in st.session_state.transcript:
+        if msg["role"] == "user":
+            st.markdown(f"**🧑 You:** {msg['text']}")
         else:
-            with st.chat_message("assistant"):
-                st.write(turn["text"])
-                if turn.get("audio"):
-                    st.audio(turn["audio"], format="audio/wav")
+            st.markdown(f"**🤖 Assistant:** {msg['text']}")
+            if msg.get("audio"):
+                st.audio(msg["audio"], format="audio/wav")
 
-    st.divider()
+    # Text input
+    user_input = st.chat_input("Type your message...")
+    if user_input:
+        process_message(user_input)
 
-    # ── Voice input (FINAL FIX) ──
+    # ── Voice input ──
     st.markdown("#### 🎙️ Push to Talk")
+
     try:
         from streamlit_mic_recorder import mic_recorder
 
@@ -131,7 +123,6 @@ with col_chat:
         if audio_data and audio_data.get("bytes"):
             audio_bytes = audio_data["bytes"]
 
-            # Debug
             st.write(f"📊 Audio size: {len(audio_bytes)} bytes")
 
             if len(audio_bytes) > 1000:
@@ -144,67 +135,41 @@ with col_chat:
                     st.info(f"📝 You said: *{transcribed}*")
                     process_message(transcribed)
                 else:
-                    st.warning("Could not transcribe. Please try again.")
+                    st.warning("❌ Could not transcribe. Try speaking clearly.")
+
             else:
-                st.warning("Audio too short. Speak longer.")
+                st.warning("⚠️ Audio too short. Speak longer.")
 
     except ImportError:
         st.warning("Run: pip install streamlit-mic-recorder")
 
-    # ── Text input ──
-    st.markdown("#### ⌨️ Or Type Your Message")
-    user_text = st.chat_input("Type your message...")
-    if user_text:
-        process_message(user_text)
-
-
-# ── DEBUG PANEL ──────────────────────────────────────────
+# ── Debug Panel ──────────────────────────────────────────
 with col_debug:
-    st.subheader("🔍 Debug Panel")
+    st.subheader("🧪 Debug")
 
-    d = st.session_state.debug
+    if st.session_state.debug:
+        st.json(st.session_state.debug)
 
-    if d:
-        st.metric("Language", (d.get("locked_language") or "Detecting").upper())
-        st.metric("Tool Used", "Yes" if d.get("tool_called") else "No")
-        st.metric("Handoff", "Triggered" if d.get("handoff_triggered") else "Pending")
-
-        st.markdown("---")
-
-        extracted = d.get("extracted_data", {})
-        if extracted:
-            import json
-            st.code(json.dumps(extracted, indent=2), language="json")
-        else:
-            st.caption("No data yet")
-
-        st.markdown("---")
-        st.metric("Turns", len(st.session_state.transcript))
-    else:
-        st.info("Start chatting...")
-
-    # ── Leads dashboard ──
     st.markdown("---")
+
+    # Leads Dashboard
     if st.button("📋 View All Leads", use_container_width=True):
         leads = get_all_leads()
         if leads:
             import pandas as pd
             df = pd.DataFrame(leads)
             st.dataframe(df[[
-                "session_id",
-                "monthly_income",
-                "loan_amount_requested",
-                "eligible",
-                "handoff_triggered",
-                "created_at"
+                "session_id", "monthly_income",
+                "loan_amount_requested", "eligible",
+                "handoff_triggered", "created_at"
             ]])
         else:
             st.caption("No leads saved yet.")
 
-    # ── Reset ──
     st.markdown("---")
-    if st.button("🔄 Reset", use_container_width=True):
-        st.session_state.agent = LoanCounselorAgent()
+
+    # Reset button
+    if st.button("🔄 Reset Session", use_container_width=True):
         st.session_state.transcript = []
         st.session_state.debug = {}
         st.session_state.session_id = generate_session_id()
