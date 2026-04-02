@@ -1,176 +1,109 @@
+# app.py
+
 import streamlit as st
-
-# ── Imports ──────────────────────────────────────────────
-from agent import LoanAgent
 from voice import transcribe_audio, text_to_speech
-from rag import is_policy_question, retrieve_context
+from agent import LoanAgent
+from streamlit_mic_recorder import mic_recorder
 
-from database import (
-    generate_session_id, save_message,
-    save_lead, save_handoff, get_all_leads
-)
-
-# ── Page Config ──────────────────────────────────────────
+# ── PAGE CONFIG ──────────────────────────────────────────
 st.set_page_config(page_title="AI Loan Counselor", layout="wide")
 
-# ── Session State Init ───────────────────────────────────
+# ── SESSION STATE INIT ───────────────────────────────────
 if "agent" not in st.session_state:
     st.session_state.agent = LoanAgent()
 
-if "transcript" not in st.session_state:
-    st.session_state.transcript = []
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-if "debug" not in st.session_state:
-    st.session_state.debug = {}
+if "locked_language" not in st.session_state:
+    st.session_state.locked_language = "english"
 
-if "session_id" not in st.session_state:
-    st.session_state.session_id = generate_session_id()
+# ── TITLE ────────────────────────────────────────────────
+st.title("🏦 AI Loan Counselor")
 
-# ── Core Function ────────────────────────────────────────
-def process_message(user_message: str):
-    """Message → RAG → LLM → TTS → DB → update state."""
+# ── INPUT MODE (VOICE / TEXT) ────────────────────────────
+mode = st.radio("Choose Input Mode", ["🎤 Voice", "⌨️ Text"])
+
+# ── USER INPUT VARIABLES ─────────────────────────────────
+user_text = ""
+audio_bytes = None
+
+# ── TEXT INPUT ───────────────────────────────────────────
+if mode == "⌨️ Text":
+    user_text = st.text_input("Type your message:")
+
+# ── VOICE INPUT ──────────────────────────────────────────
+if mode == "🎤 Voice":
+    audio = mic_recorder(start_prompt="🎙️ Click to Record", stop_prompt="⏹️ Stop")
+
+    if audio:
+        audio_bytes = audio["bytes"]
+        st.write(f"📊 Audio size: {len(audio_bytes)} bytes")
+
+# ── PROCESS FUNCTION ─────────────────────────────────────
+def process_message(user_input):
 
     # Save user message
-    save_message(st.session_state.session_id, "user", user_message)
+    st.session_state.chat_history.append(("user", user_input))
 
-    # RAG
-    agent_input = user_message
-    if is_policy_question(user_message):
-        rag_context = retrieve_context(user_message)
-        if rag_context:
-            agent_input = f"[POLICY CONTEXT: {rag_context}]\n\nUser: {user_message}"
+    agent_input = {
+        "message": user_input,
+        "locked_language": st.session_state.locked_language
+    }
 
-    # Add to transcript
-    st.session_state.transcript.append({
-        "role": "user",
-        "text": user_message
-    })
+    result = st.session_state.agent.chat(agent_input)
 
-    # LLM
-    with st.spinner("🤔 Thinking..."):
-        result = st.session_state.agent.chat(agent_input)
+    response = result.get("response", "⚠️ Error occurred")
+    st.session_state.locked_language = result.get("locked_language", "english")
 
-    response_text = result["response"]
-    st.session_state.debug = result
+    # Save assistant response
+    st.session_state.chat_history.append(("assistant", response))
 
-    # Save assistant message
-    save_message(st.session_state.session_id, "assistant", response_text)
+    # Generate speech
+    audio_response = text_to_speech(response, st.session_state.locked_language)
 
-    # Save lead
-    save_lead(
-        session_id=st.session_state.session_id,
-        extracted_data=result.get("extracted_data", {}),
-        locked_language=result.get("locked_language", "english"),
-        handoff_triggered=result.get("handoff_triggered", False)
-    )
+    return response, audio_response, result
 
-    # Save handoff
-    if result.get("handoff_triggered"):
-        save_handoff(
-            session_id=st.session_state.session_id,
-            lead_data=result.get("extracted_data", {})
-        )
 
-    # TTS
-    with st.spinner("🔊 Generating voice..."):
-        audio_out = text_to_speech(
-            response_text,
-            result.get("locked_language", "english")
-        )
+# ── MAIN INPUT HANDLING ──────────────────────────────────
+user_input = ""
 
-    # Add assistant response
-    st.session_state.transcript.append({
-        "role": "assistant",
-        "text": response_text,
-        "audio": audio_out if audio_out else None
-    })
+# 🔥 PRIORITY 1: TEXT INPUT
+if user_text:
+    user_input = user_text.strip()
 
-    st.rerun()
+# 🔥 PRIORITY 2: VOICE INPUT
+elif audio_bytes:
+    transcript = transcribe_audio(audio_bytes, st.session_state.locked_language)
 
-# ── UI Layout ────────────────────────────────────────────
-col_chat, col_debug = st.columns([3, 1])
+    if transcript:
+        user_input = transcript
+    else:
+        st.error("❌ Could not transcribe. Try speaking clearly OR use text mode.")
 
-# ── Chat Section ─────────────────────────────────────────
-with col_chat:
-    st.title("🏦 AI Loan Counselor")
+# ── RUN AGENT ────────────────────────────────────────────
+if user_input:
 
-    # Display chat
-    for msg in st.session_state.transcript:
-        if msg["role"] == "user":
-            st.markdown(f"**🧑 You:** {msg['text']}")
-        else:
-            st.markdown(f"**🤖 Assistant:** {msg['text']}")
-            if msg.get("audio"):
-                st.audio(msg["audio"], format="audio/wav")
+    response, audio_response, debug_data = process_message(user_input)
 
-    # Text input
-    user_input = st.chat_input("Type your message...")
-    if user_input:
-        process_message(user_input)
+    # ── DISPLAY CURRENT MESSAGE ─────────────────────────
+    st.markdown(f"👤 **You:** {user_input}")
+    st.markdown(f"🤖 **Assistant:** {response}")
 
-    # ── Voice input ──
-    st.markdown("#### 🎙️ Push to Talk")
+    # ── AUDIO OUTPUT ────────────────────────────────────
+    if audio_response:
+        st.audio(audio_response, format="audio/wav")
 
-    try:
-        from streamlit_mic_recorder import mic_recorder
+    # ── DEBUG PANEL ─────────────────────────────────────
+    with st.expander("🔍 Debug Panel"):
+        st.json(debug_data)
 
-        audio_data = mic_recorder(
-            start_prompt="🎙️ Click to Record",
-            stop_prompt="⏹️ Click to Stop",
-            key="mic"
-        )
+# ── CHAT HISTORY ─────────────────────────────────────────
+st.markdown("---")
+st.subheader("💬 Conversation History")
 
-        if audio_data and audio_data.get("bytes"):
-            audio_bytes = audio_data["bytes"]
-
-            st.write(f"📊 Audio size: {len(audio_bytes)} bytes")
-
-            if len(audio_bytes) > 1000:
-                locked_lang = st.session_state.agent.locked_language or "english"
-
-                with st.spinner("🎧 Transcribing..."):
-                    transcribed = transcribe_audio(audio_bytes, locked_lang)
-
-                if transcribed:
-                    st.info(f"📝 You said: *{transcribed}*")
-                    process_message(transcribed)
-                else:
-                    st.warning("❌ Could not transcribe. Try speaking clearly.")
-
-            else:
-                st.warning("⚠️ Audio too short. Speak longer.")
-
-    except ImportError:
-        st.warning("Run: pip install streamlit-mic-recorder")
-
-# ── Debug Panel ──────────────────────────────────────────
-with col_debug:
-    st.subheader("🧪 Debug")
-
-    if st.session_state.debug:
-        st.json(st.session_state.debug)
-
-    st.markdown("---")
-
-    # Leads Dashboard
-    if st.button("📋 View All Leads", use_container_width=True):
-        leads = get_all_leads()
-        if leads:
-            import pandas as pd
-            df = pd.DataFrame(leads)
-            st.dataframe(df[[
-                "session_id", "monthly_income",
-                "loan_amount_requested", "eligible",
-                "handoff_triggered", "created_at"
-            ]])
-        else:
-            st.caption("No leads saved yet.")
-
-    st.markdown("---")
-
-    # Reset button
-    if st.button("🔄 Reset Session", use_container_width=True):
-        st.session_state.transcript = []
-        st.session_state.debug = {}
-        st.session_state.session_id = generate_session_id()
-        st.rerun()
+for role, msg in st.session_state.chat_history:
+    if role == "user":
+        st.markdown(f"👤 {msg}")
+    else:
+        st.markdown(f"🤖 {msg}")
