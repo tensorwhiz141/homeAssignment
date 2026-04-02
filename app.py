@@ -2,7 +2,7 @@ import streamlit as st
 import io
 
 # ── Imports ──────────────────────────────────────────────
-from agent import LoanCounselorAgent
+from agent import LoanAgent
 from voice import transcribe_audio, text_to_speech, convert_to_wav
 from rag import is_policy_question, retrieve_context
 from database import (
