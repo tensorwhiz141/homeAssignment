@@ -116,11 +116,10 @@ with col_chat:
 
     st.divider()
 
-    # ── Voice input ──
+    # ── Voice input (FINAL FIX) ──
     st.markdown("#### 🎙️ Push to Talk")
     try:
         from streamlit_mic_recorder import mic_recorder
-        from voice import convert_to_wav
 
         audio_data = mic_recorder(
             start_prompt="🎙️ Click to Record",
@@ -137,15 +136,9 @@ with col_chat:
             if len(audio_bytes) > 1000:
                 locked_lang = st.session_state.agent.locked_language or "english"
 
-                # Convert audio
-                with st.spinner("🔄 Converting audio..."):
-                    wav_bytes = convert_to_wav(audio_bytes)
-
-                st.write(f"📊 WAV size: {len(wav_bytes)} bytes")
-
-                # Transcribe
+                # ✅ Direct transcription (NO conversion)
                 with st.spinner("🎧 Transcribing..."):
-                    transcribed = transcribe_audio(wav_bytes, locked_lang)
+                    transcribed = transcribe_audio(audio_bytes, locked_lang)
 
                 if transcribed:
                     st.info(f"📝 You said: *{transcribed}*")
@@ -156,7 +149,7 @@ with col_chat:
                 st.warning("Audio too short. Please hold and speak longer.")
 
     except ImportError:
-        st.warning("Run: pip install streamlit-mic-recorder pydub")
+        st.warning("Run: pip install streamlit-mic-recorder")
 
     # ── Text input ──
     st.markdown("#### ⌨️ Or Type Your Message")

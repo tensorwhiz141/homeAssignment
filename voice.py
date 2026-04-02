@@ -10,29 +10,45 @@ load_dotenv()
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 
 # ── Audio Conversion ─────────────────────────────────────
-def convert_to_wav(audio_bytes: bytes) -> bytes:
-    """Fallback-safe conversion without strict format dependency."""
+def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
+    """
+    Speech-to-Text using Sarvam AI saarika:v2 model.
+    """
+
+    language_code = LANGUAGE_CODE_MAP.get(locked_language, "hi-IN")
+
+    url = "https://api.sarvam.ai/speech-to-text"
+    headers = {"api-subscription-key": SARVAM_API_KEY}
+
+    # 🔥 Send as WEBM instead of forcing WAV
+    files = {
+        "file": ("audio.webm", audio_bytes, "audio/webm")
+    }
+
+    data = {
+        "language_code": language_code,
+        "model": "saarika:v2",
+        "with_timestamps": "false"
+    }
+
     try:
-        import io
-        from pydub import AudioSegment
+        print("[DEBUG] Sending RAW audio to Sarvam")
 
-        # 🔥 REMOVE format="webm"
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+        response = requests.post(url, headers=headers, files=files, data=data)
 
-        audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+        print(f"[STT STATUS] {response.status_code}")
+        print(f"[STT RESPONSE] {response.text}")
 
-        wav_io = io.BytesIO()
-        audio.export(wav_io, format="wav")
+        response.raise_for_status()
 
-        wav_bytes = wav_io.getvalue()
+        result = response.json()
+        transcript = result.get("transcript", "").strip()
 
-        print(f"[CONVERT SUCCESS] {len(audio_bytes)} → {len(wav_bytes)}")
-
-        return wav_bytes
+        return transcript
 
     except Exception as e:
-        print(f"[CONVERT FAILED] {e}")
-        return b""
+        print(f"[STT ERROR] {e}")
+        return ""
 
 # ── Language Mapping ─────────────────────────────────────
 LANGUAGE_CODE_MAP = {
