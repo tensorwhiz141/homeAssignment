@@ -1,27 +1,37 @@
 # voice.py
-import os
 import requests
-# from dotenv import load_dotenv
 import streamlit as st
-# import io
-# from pydub import AudioSegment
-import streamlit as st
+import base64
 
 SARVAM_API_KEY = st.secrets.get("SARVAM_API_KEY")
 
+# ── Language Mapping ─────────────────────────────────────
+LANGUAGE_CODE_MAP = {
+    "english": "en-IN",
+    "hindi":   "hi-IN",
+    "marathi": "mr-IN",
+    "tamil":   "ta-IN"
+}
 
-# ── Audio Conversion ─────────────────────────────────────
+# ── Speech to Text ───────────────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
     """
     Speech-to-Text using Sarvam AI saarika:v2 model.
     """
 
+    print("\n========== STT DEBUG ==========")
+    print(f"[DEBUG] Audio size: {len(audio_bytes)} bytes")
+
     language_code = LANGUAGE_CODE_MAP.get(locked_language, "hi-IN")
+    print(f"[DEBUG] Language: {language_code}")
 
     url = "https://api.sarvam.ai/speech-to-text"
-    headers = {"api-subscription-key": SARVAM_API_KEY}
 
-    # 🔥 Send as WEBM instead of forcing WAV
+    headers = {
+        "api-subscription-key": SARVAM_API_KEY
+    }
+
+    # ✅ IMPORTANT: Send as WEBM (correct format from mic)
     files = {
         "file": ("audio.webm", audio_bytes, "audio/webm")
     }
@@ -33,8 +43,6 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
     }
 
     try:
-        print("[DEBUG] Sending RAW audio to Sarvam")
-
         response = requests.post(url, headers=headers, files=files, data=data)
 
         print(f"[STT STATUS] {response.status_code}")
@@ -45,90 +53,17 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         result = response.json()
         transcript = result.get("transcript", "").strip()
 
+        if not transcript:
+            print("[WARNING] Empty transcript received")
+
+        print(f"[FINAL TRANSCRIPT] {transcript}")
+        print("================================\n")
+
         return transcript
 
     except Exception as e:
         print(f"[STT ERROR] {e}")
-        return ""
-
-# ── Language Mapping ─────────────────────────────────────
-LANGUAGE_CODE_MAP = {
-    "english": "en-IN",
-    "hindi":   "hi-IN",
-    "marathi": "mr-IN",
-    "tamil":   "ta-IN"
-}
-
-SPEAKER_MAP = {
-    "english": "meera",
-    "hindi":   "meera",
-    "marathi": "meera",
-    "tamil":   "meera"
-}
-
-
-# ── Speech to Text ───────────────────────────────────────
-def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
-    """
-    Speech-to-Text using Sarvam AI saarika:v2 model.
-    """
-
-    print("\n========== STT DEBUG START ==========")
-
-    # Convert audio
-    # audio_bytes = convert_to_wav(audio_bytes)
-    print(f"[DEBUG] Audio bytes after conversion: {len(audio_bytes)}")
-
-    language_code = LANGUAGE_CODE_MAP.get(locked_language, "hi-IN")
-    print(f"[DEBUG] Language Code: {language_code}")
-
-    url = "https://api.sarvam.ai/speech-to-text"
-    headers = {"api-subscription-key": SARVAM_API_KEY}
-
-    files = {
-        "file": ("audio.wav", audio_bytes, "audio/wav")
-    }
-
-    data = {
-        "language_code": language_code,
-        "model": "saarika:v2",
-        "with_timestamps": "false"
-    }
-
-    try:
-        print("[DEBUG] Sending request to Sarvam...")
-
-        response = requests.post(url, headers=headers, files=files, data=data)
-
-        print(f"[STT STATUS] {response.status_code}")
-        print(f"[STT HEADERS] {response.headers}")
-
-        # 🔥 IMPORTANT: Print FULL response (not truncated)
-        print(f"[STT RESPONSE FULL] {response.text}")
-
-        response.raise_for_status()
-
-        result = response.json()
-        print(f"[STT PARSED JSON] {result}")
-
-        transcript = result.get("transcript", "").strip()
-
-        if not transcript:
-            print("[WARNING] Empty transcript received!")
-
-        print(f"[FINAL TRANSCRIPT] {transcript}")
-        print("========== STT DEBUG END ==========\n")
-
-        return transcript
-
-    except requests.exceptions.RequestException as e:
-        print(f"[STT ERROR - REQUEST FAILED] {e}")
-        print("========== STT DEBUG END ==========\n")
-        return ""
-
-    except Exception as e:
-        print(f"[STT ERROR - PARSE FAILED] {e}")
-        print("========== STT DEBUG END ==========\n")
+        print("================================\n")
         return ""
 
 
@@ -141,6 +76,7 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
     language_code = LANGUAGE_CODE_MAP.get(locked_language, "en-IN")
 
     url = "https://api.sarvam.ai/text-to-speech"
+
     headers = {
         "api-subscription-key": SARVAM_API_KEY,
         "Content-Type": "application/json"
@@ -162,12 +98,11 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
         response = requests.post(url, headers=headers, json=payload)
 
         print(f"[TTS STATUS] {response.status_code}")
-        print(f"[TTS RESPONSE] {response.text[:300]}")
+        print(f"[TTS RESPONSE] {response.text[:200]}")
 
         response.raise_for_status()
         result = response.json()
 
-        import base64
         audio_b64 = result.get("audios", [""])[0]
 
         if audio_b64:
@@ -175,11 +110,8 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
 
         return b""
 
-    except requests.exceptions.RequestException as e:
-        print(f"[TTS ERROR] {e}")
-        return b""
     except Exception as e:
-        print(f"[TTS PARSE ERROR] {e}")
+        print(f"[TTS ERROR] {e}")
         return b""
 
 
