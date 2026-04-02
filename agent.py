@@ -85,30 +85,19 @@ class LoanAgent:
             ]
         }
 
-        try:
-            response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload)
 
-            print("STATUS:", response.status_code)
-            print("RESPONSE:", response.text)
+        print("STATUS:", response.status_code)
+        print("RESPONSE:", response.text)
 
-            response.raise_for_status()
+        response.raise_for_status()
 
-            result = response.json()
-            reply = result["choices"][0]["message"]["content"]
+        result = response.json()
+        reply = result["choices"][0]["message"]["content"]
 
-            return {
-                "response": reply,
-                "locked_language": self.locked_language,
-                "extracted_data": self.extracted_data,
-                "handoff_triggered": False
-            }
-
-        except Exception as e:
-            print("ERROR:", e)
-            return {
-                "response": "Sorry, something went wrong.",
-                "locked_language": self.locked_language,
-                "extracted_data": self.extracted_data,
-                "handoff_triggered": False
-            }
-        
+        return {
+            "response": reply,
+            "locked_language": self.locked_language,
+            "extracted_data": self.extracted_data,
+            "handoff_triggered": False
+        }
