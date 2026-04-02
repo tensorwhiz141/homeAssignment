@@ -2,9 +2,10 @@
 import requests
 import streamlit as st
 import base64
+from pydub import AudioSegment
+import io
 
 # ── API KEYS ─────────────────────────────────────────────
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 SARVAM_API_KEY = st.secrets.get("SARVAM_API_KEY")
 
 # ── Language Mapping ─────────────────────────────────────
@@ -15,36 +16,50 @@ LANGUAGE_CODE_MAP = {
     "tamil":   "ta-IN"
 }
 
-# ── Speech to Text (WHISPER) ─────────────────────────────
+# ── Speech to Text (SARVAM) ──────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
-    """
-    Uses OpenAI Whisper — works perfectly with WebM
-    """
 
     print("\n===== STT DEBUG =====")
-    print("Audio size:", len(audio_bytes))
+    print("Raw size:", len(audio_bytes))
 
-    if not OPENAI_API_KEY:
-        print("❌ OPENAI_API_KEY missing")
+    if not SARVAM_API_KEY:
+        print("❌ SARVAM_API_KEY missing")
         return ""
 
     if not audio_bytes or len(audio_bytes) < 1000:
         print("❌ Audio too small")
         return ""
 
-    url = "https://api.openai.com/v1/audio/transcriptions"
+    # 🔥 Convert WebM → WAV properly
+    try:
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
+        audio = audio.set_frame_rate(16000).set_channels(1)
+
+        wav_io = io.BytesIO()
+        audio.export(wav_io, format="wav")
+
+        wav_bytes = wav_io.getvalue()
+
+        print("WAV size:", len(wav_bytes))
+
+    except Exception as e:
+        print("❌ Conversion error:", e)
+        return ""
+
+    url = "https://api.sarvam.ai/speech-to-text"
 
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
+        "api-subscription-key": SARVAM_API_KEY
     }
 
-    # ✅ Send WebM directly (NO conversion)
     files = {
-        "file": ("audio.webm", audio_bytes, "audio/webm")
+        "file": ("audio.wav", wav_bytes, "audio/wav")
     }
 
     data = {
-        "model": "whisper-1"
+        "language_code": LANGUAGE_CODE_MAP.get(locked_language, "en-IN"),
+        "model": "saarika:v2",
+        "with_timestamps": "false"
     }
 
     try:
@@ -56,7 +71,7 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         response.raise_for_status()
 
         result = response.json()
-        transcript = result.get("text", "").strip()
+        transcript = result.get("transcript", "").strip()
 
         print("FINAL:", transcript)
         print("=====================\n")
@@ -64,8 +79,7 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         return transcript
 
     except Exception as e:
-        print("ERROR:", e)
-        print("=====================\n")
+        print("❌ STT ERROR:", e)
         return ""
 
 
@@ -100,7 +114,7 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
     try:
         response = requests.post(url, headers=headers, json=payload)
 
-        print(f"[TTS STATUS] {response.status_code}")
+        print("[TTS STATUS]:", response.status_code)
         response.raise_for_status()
 
         result = response.json()
@@ -112,5 +126,5 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
         return b""
 
     except Exception as e:
-        print(f"[TTS ERROR] {e}")
+        print("❌ TTS ERROR:", e)
         return b""
