@@ -17,6 +17,37 @@ LANGUAGE_CODE_MAP = {
     "tamil":   "ta-IN"
 }
 
+
+# ── Convert Audio Format ─────────────────────────────────
+def convert_to_wav(audio_bytes: bytes) -> bytes:
+    """
+    Convert any audio format (WebM, MP4, OGG etc.) to WAV.
+    Required because streamlit-mic-recorder gives WebM bytes
+    but Sarvam STT expects WAV format.
+    """
+    try:
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
+        audio = (
+            audio
+            .set_frame_rate(16000)
+            .set_channels(1)
+            .set_sample_width(2)
+        )
+        wav_io = io.BytesIO()
+        audio.export(wav_io, format="wav")
+        return wav_io.getvalue()
+    except Exception:
+        try:
+            # Fallback: auto-detect format
+            audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+            wav_io = io.BytesIO()
+            audio.export(wav_io, format="wav")
+            return wav_io.getvalue()
+        except Exception as e:
+            print(f"[AUDIO CONVERT ERROR] {e}")
+            return audio_bytes
+
+
 # ── Speech to Text (SARVAM) ──────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
 
