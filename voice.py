@@ -1,13 +1,14 @@
 # voice.py
 import os
 import requests
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
+import streamlit as st
 # import io
 # from pydub import AudioSegment
+import streamlit as st
 
-load_dotenv()
+SARVAM_API_KEY = st.secrets.get("SARVAM_API_KEY")
 
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 
 # ── Audio Conversion ─────────────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
