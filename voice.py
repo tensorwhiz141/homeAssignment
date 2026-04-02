@@ -6,7 +6,7 @@ import base64
 from pydub import AudioSegment
 import io
 
-# ── API KEYS ─────────────────────────────────────────────
+# ── API KEY ──────────────────────────────────────────────
 SARVAM_API_KEY = st.secrets.get("SARVAM_API_KEY")
 
 # ── Language Mapping ─────────────────────────────────────
@@ -32,11 +32,16 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         print("❌ Audio too small")
         return ""
 
-    # 🔥 AUTO-DETECT + CONVERT TO WAV
+    # 🔥 FORCE PROPER DECODE + PCM FIX
     try:
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))  # AUTO detect format
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
 
-        audio = audio.set_frame_rate(16000).set_channels(1)
+        audio = (
+            audio
+            .set_frame_rate(16000)   # 16kHz
+            .set_channels(1)         # mono
+            .set_sample_width(2)     # 16-bit PCM 🔥 IMPORTANT
+        )
 
         wav_io = io.BytesIO()
         audio.export(wav_io, format="wav")
@@ -50,7 +55,7 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         print("❌ Conversion error:", e)
         return ""
 
-    # ── API CALL ─────────────────────────────────────────
+    # ── SARVAM API ───────────────────────────────────────
     url = "https://api.sarvam.ai/speech-to-text"
 
     headers = {
@@ -69,6 +74,7 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
 
     try:
         print("🚀 Sending to Sarvam...")
+        print("Bytes being sent:", len(wav_bytes))
 
         response = requests.post(url, headers=headers, files=files, data=data)
 
