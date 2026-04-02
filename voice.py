@@ -1,4 +1,5 @@
 # voice.py
+
 import requests
 import streamlit as st
 import base64
@@ -19,9 +20,10 @@ LANGUAGE_CODE_MAP = {
 # ── Speech to Text (SARVAM) ──────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
 
-    print("\n===== STT DEBUG =====")
-    print("Raw size:", len(audio_bytes))
+    print("\n========== STT DEBUG ==========")
+    print("Raw audio size:", len(audio_bytes))
 
+    # Safety checks
     if not SARVAM_API_KEY:
         print("❌ SARVAM_API_KEY missing")
         return ""
@@ -30,9 +32,10 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         print("❌ Audio too small")
         return ""
 
-    # 🔥 Convert WebM → WAV properly
+    # 🔥 AUTO-DETECT + CONVERT TO WAV
     try:
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))  # AUTO detect format
+
         audio = audio.set_frame_rate(16000).set_channels(1)
 
         wav_io = io.BytesIO()
@@ -40,12 +43,14 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
 
         wav_bytes = wav_io.getvalue()
 
+        print("✅ Conversion success")
         print("WAV size:", len(wav_bytes))
 
     except Exception as e:
         print("❌ Conversion error:", e)
         return ""
 
+    # ── API CALL ─────────────────────────────────────────
     url = "https://api.sarvam.ai/speech-to-text"
 
     headers = {
@@ -63,6 +68,8 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
     }
 
     try:
+        print("🚀 Sending to Sarvam...")
+
         response = requests.post(url, headers=headers, files=files, data=data)
 
         print("STATUS:", response.status_code)
@@ -73,8 +80,11 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         result = response.json()
         transcript = result.get("transcript", "").strip()
 
-        print("FINAL:", transcript)
-        print("=====================\n")
+        if not transcript:
+            print("⚠️ Empty transcript")
+
+        print("✅ FINAL TEXT:", transcript)
+        print("================================\n")
 
         return transcript
 
@@ -115,6 +125,7 @@ def text_to_speech(text: str, locked_language: str = "english") -> bytes:
         response = requests.post(url, headers=headers, json=payload)
 
         print("[TTS STATUS]:", response.status_code)
+
         response.raise_for_status()
 
         result = response.json()
