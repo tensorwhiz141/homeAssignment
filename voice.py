@@ -14,16 +14,35 @@ LANGUAGE_CODE_MAP = {
 }
 
 # ── Speech to Text ───────────────────────────────────────
+import io
+import wave
+
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
     """
-    Speech-to-Text using Sarvam AI saarika:v2 model.
+    Convert raw mic audio → proper WAV → send to Sarvam
     """
 
     print("\n========== STT DEBUG ==========")
-    print(f"[DEBUG] Audio size: {len(audio_bytes)} bytes")
+    print(f"[DEBUG] Raw audio size: {len(audio_bytes)}")
 
     language_code = LANGUAGE_CODE_MAP.get(locked_language, "hi-IN")
-    print(f"[DEBUG] Language: {language_code}")
+
+    # 🔥 Convert to proper WAV (PCM)
+    try:
+        wav_buffer = io.BytesIO()
+
+        with wave.open(wav_buffer, "wb") as wf:
+            wf.setnchannels(1)       # mono
+            wf.setsampwidth(2)       # 16-bit
+            wf.setframerate(16000)   # 16kHz
+            wf.writeframes(audio_bytes)
+
+        wav_bytes = wav_buffer.getvalue()
+        print(f"[DEBUG] WAV size: {len(wav_bytes)}")
+
+    except Exception as e:
+        print(f"[WAV ERROR] {e}")
+        wav_bytes = audio_bytes  # fallback
 
     url = "https://api.sarvam.ai/speech-to-text"
 
@@ -31,9 +50,8 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         "api-subscription-key": SARVAM_API_KEY
     }
 
-    # ✅ IMPORTANT: Send as WEBM (correct format from mic)
     files = {
-        "file": ("audio.webm", audio_bytes, "audio/webm")
+        "file": ("audio.wav", wav_bytes, "audio/wav")
     }
 
     data = {
@@ -54,9 +72,9 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         transcript = result.get("transcript", "").strip()
 
         if not transcript:
-            print("[WARNING] Empty transcript received")
+            print("⚠️ EMPTY TRANSCRIPT")
 
-        print(f"[FINAL TRANSCRIPT] {transcript}")
+        print(f"[FINAL] {transcript}")
         print("================================\n")
 
         return transcript
@@ -65,7 +83,6 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
         print(f"[STT ERROR] {e}")
         print("================================\n")
         return ""
-
 
 # ── Text to Speech ───────────────────────────────────────
 def text_to_speech(text: str, locked_language: str = "english") -> bytes:
