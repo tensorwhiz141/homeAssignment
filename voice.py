@@ -3,6 +3,8 @@ import requests
 import streamlit as st
 import base64
 
+# ── API KEYS ─────────────────────────────────────────────
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 SARVAM_API_KEY = st.secrets.get("SARVAM_API_KEY")
 
 # ── Language Mapping ─────────────────────────────────────
@@ -13,82 +15,62 @@ LANGUAGE_CODE_MAP = {
     "tamil":   "ta-IN"
 }
 
-# ── Speech to Text ───────────────────────────────────────
-import io
-import wave
-
+# ── Speech to Text (WHISPER) ─────────────────────────────
 def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> str:
     """
-    Convert raw mic audio → proper WAV → send to Sarvam
+    Speech-to-Text using OpenAI Whisper (works perfectly with WebM)
     """
 
-    print("\n========== STT DEBUG ==========")
-    print(f"[DEBUG] Raw audio size: {len(audio_bytes)}")
+    print("\n===== WHISPER STT =====")
 
-    language_code = LANGUAGE_CODE_MAP.get(locked_language, "hi-IN")
+    if not OPENAI_API_KEY:
+        print("❌ OPENAI_API_KEY missing")
+        return ""
 
-    # 🔥 Convert to proper WAV (PCM)
-    try:
-        wav_buffer = io.BytesIO()
-
-        with wave.open(wav_buffer, "wb") as wf:
-            wf.setnchannels(1)       # mono
-            wf.setsampwidth(2)       # 16-bit
-            wf.setframerate(16000)   # 16kHz
-            wf.writeframes(audio_bytes)
-
-        wav_bytes = wav_buffer.getvalue()
-        print(f"[DEBUG] WAV size: {len(wav_bytes)}")
-
-    except Exception as e:
-        print(f"[WAV ERROR] {e}")
-        wav_bytes = audio_bytes  # fallback
-
-    url = "https://api.sarvam.ai/speech-to-text"
+    url = "https://api.openai.com/v1/audio/transcriptions"
 
     headers = {
-        "api-subscription-key": SARVAM_API_KEY
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
 
     files = {
-        "file": ("audio.wav", wav_bytes, "audio/wav")
+        "file": ("audio.webm", audio_bytes, "audio/webm")
     }
 
     data = {
-        "language_code": language_code,
-        "model": "saarika:v2",
-        "with_timestamps": "false"
+        "model": "gpt-4o-mini-transcribe"
     }
 
     try:
         response = requests.post(url, headers=headers, files=files, data=data)
 
-        print(f"[STT STATUS] {response.status_code}")
-        print(f"[STT RESPONSE] {response.text}")
+        print(f"[WHISPER STATUS] {response.status_code}")
+        print(f"[WHISPER RESPONSE] {response.text}")
 
         response.raise_for_status()
 
         result = response.json()
-        transcript = result.get("transcript", "").strip()
+        transcript = result.get("text", "").strip()
 
-        if not transcript:
-            print("⚠️ EMPTY TRANSCRIPT")
-
-        print(f"[FINAL] {transcript}")
-        print("================================\n")
+        print(f"[FINAL TRANSCRIPT] {transcript}")
+        print("========================\n")
 
         return transcript
 
     except Exception as e:
-        print(f"[STT ERROR] {e}")
-        print("================================\n")
+        print(f"[WHISPER ERROR] {e}")
         return ""
 
-# ── Text to Speech ───────────────────────────────────────
+
+# ── Text to Speech (SARVAM) ──────────────────────────────
 def text_to_speech(text: str, locked_language: str = "english") -> bytes:
     """
     Text-to-Speech using Sarvam AI bulbul:v2 model.
     """
+
+    if not SARVAM_API_KEY:
+        print("❌ SARVAM_API_KEY missing")
+        return b""
 
     language_code = LANGUAGE_CODE_MAP.get(locked_language, "en-IN")
 
