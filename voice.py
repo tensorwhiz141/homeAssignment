@@ -11,15 +11,14 @@ SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 
 # ── Audio Conversion ─────────────────────────────────────
 def convert_to_wav(audio_bytes: bytes) -> bytes:
-    """Convert WebM audio to proper PCM WAV (Sarvam compatible)."""
+    """Fallback-safe conversion without strict format dependency."""
     try:
         import io
         from pydub import AudioSegment
 
-        # Load WebM audio
-        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="webm")
+        # 🔥 REMOVE format="webm"
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
 
-        # 🔥 FORCE correct format
         audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
 
         wav_io = io.BytesIO()
@@ -27,14 +26,13 @@ def convert_to_wav(audio_bytes: bytes) -> bytes:
 
         wav_bytes = wav_io.getvalue()
 
-        print(f"[CONVERT SUCCESS] Original: {len(audio_bytes)} → WAV: {len(wav_bytes)}")
+        print(f"[CONVERT SUCCESS] {len(audio_bytes)} → {len(wav_bytes)}")
 
         return wav_bytes
 
     except Exception as e:
         print(f"[CONVERT FAILED] {e}")
-        return b""  # ❗ DO NOT return original bytes
-
+        return b""
 
 # ── Language Mapping ─────────────────────────────────────
 LANGUAGE_CODE_MAP = {
