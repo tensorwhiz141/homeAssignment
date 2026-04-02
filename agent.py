@@ -3,9 +3,15 @@
 import json
 import re
 import streamlit as st
-import requests
+import google.generativeai as genai
 
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
+# ── Configure Gemini ─────────────────────────────────────
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY not found in secrets")
+
+genai.configure(api_key=GEMINI_API_KEY)
 
 # ── Language Detection ───────────────────────────────────
 def detect_language(text: str) -> str:
@@ -70,34 +76,26 @@ class LoanAgent:
 
         prompt = build_prompt(user_message, self.extracted_data)
 
-        url = "https://api.openai.com/v1/chat/completions"
+        try:
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
+            response = model.generate_content(prompt)
 
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": "You are a helpful loan assistant."},
-                {"role": "user", "content": prompt}
-            ]
-        }
+            reply = response.text if response else "Sorry, I couldn't respond."
 
-        response = requests.post(url, headers=headers, json=payload)
+            return {
+                "response": reply,
+                "locked_language": self.locked_language,
+                "extracted_data": self.extracted_data,
+                "handoff_triggered": False
+            }
 
-        print("STATUS:", response.status_code)
-        print("RESPONSE:", response.text)
+        except Exception as e:
+            print("GEMINI ERROR:", e)
 
-        response.raise_for_status()
-
-        result = response.json()
-        reply = result["choices"][0]["message"]["content"]
-
-        return {
-            "response": reply,
-            "locked_language": self.locked_language,
-            "extracted_data": self.extracted_data,
-            "handoff_triggered": False
-        }
+            return {
+                "response": "⚠️ Gemini error. Please try again.",
+                "locked_language": self.locked_language,
+                "extracted_data": self.extracted_data,
+                "handoff_triggered": False
+            }
