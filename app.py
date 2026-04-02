@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ── Session state init ────────────────────────────────────
+# ── Session state ─────────────────────────────────────────
 if "agent" not in st.session_state:
     st.session_state.agent = LoanCounselorAgent()
 
@@ -36,14 +36,14 @@ def process_message(user_message: str):
     # Save user message
     save_message(st.session_state.session_id, "user", user_message)
 
-    # RAG
+    # RAG context
     agent_input = user_message
     if is_policy_question(user_message):
         rag_context = retrieve_context(user_message)
         if rag_context:
             agent_input = f"[POLICY CONTEXT: {rag_context}]\n\nUser: {user_message}"
 
-    # Add to transcript
+    # Add user to transcript
     st.session_state.transcript.append({
         "role": "user",
         "text": user_message
@@ -67,7 +67,7 @@ def process_message(user_message: str):
         handoff_triggered=result.get("handoff_triggered", False)
     )
 
-    # Save handoff
+    # Save handoff if triggered
     if result.get("handoff_triggered"):
         save_handoff(
             session_id=st.session_state.session_id,
@@ -81,7 +81,7 @@ def process_message(user_message: str):
             result.get("locked_language", "english")
         )
 
-    # Add response
+    # Add assistant to transcript
     st.session_state.transcript.append({
         "role": "assistant",
         "text": response_text,
@@ -97,11 +97,12 @@ st.caption("Speak or type in English, Hindi, Marathi, or Tamil")
 
 # Handoff alert
 if st.session_state.debug.get("handoff_triggered"):
-    st.error("🚨 [HANDOFF TRIGGERED: Routing to Human RM]")
+    st.error("🚨 Handoff triggered: Routing to Human RM")
 
 col_chat, col_debug = st.columns([2, 1])
 
-# ── CHAT ─────────────────────────────────────────────────
+
+# ── CHAT SECTION ─────────────────────────────────────────
 with col_chat:
     st.subheader("💬 Conversation")
 
@@ -136,7 +137,6 @@ with col_chat:
             if len(audio_bytes) > 1000:
                 locked_lang = st.session_state.agent.locked_language or "english"
 
-                # ✅ Direct transcription (NO conversion)
                 with st.spinner("🎧 Transcribing..."):
                     transcribed = transcribe_audio(audio_bytes, locked_lang)
 
@@ -144,46 +144,44 @@ with col_chat:
                     st.info(f"📝 You said: *{transcribed}*")
                     process_message(transcribed)
                 else:
-                    st.warning("Could not transcribe. Please speak clearly and try again.")
+                    st.warning("Could not transcribe. Please try again.")
             else:
-                st.warning("Audio too short. Please hold and speak longer.")
+                st.warning("Audio too short. Speak longer.")
 
     except ImportError:
         st.warning("Run: pip install streamlit-mic-recorder")
 
     # ── Text input ──
     st.markdown("#### ⌨️ Or Type Your Message")
-    user_text = st.chat_input("Type here in any language...")
+    user_text = st.chat_input("Type your message...")
     if user_text:
         process_message(user_text)
 
 
 # ── DEBUG PANEL ──────────────────────────────────────────
 with col_debug:
-    st.subheader("🔍 LLM Debug Panel")
+    st.subheader("🔍 Debug Panel")
 
     d = st.session_state.debug
 
     if d:
-        st.metric("🌐 Locked Language", (d.get("locked_language") or "Detecting").upper())
-        st.metric("🔧 Tool Called", "✅ Yes" if d.get("tool_called") else "❌ No")
-        st.metric("👤 Human Handoff", "🚨 Triggered" if d.get("handoff_triggered") else "⏳ Pending")
+        st.metric("Language", (d.get("locked_language") or "Detecting").upper())
+        st.metric("Tool Used", "Yes" if d.get("tool_called") else "No")
+        st.metric("Handoff", "Triggered" if d.get("handoff_triggered") else "Pending")
 
         st.markdown("---")
-        st.markdown("**📊 Extracted JSON:**")
 
         extracted = d.get("extracted_data", {})
         if extracted:
             import json
             st.code(json.dumps(extracted, indent=2), language="json")
         else:
-            st.caption("No financial data collected yet...")
+            st.caption("No data yet")
 
         st.markdown("---")
-        st.metric("💬 Conversation Turns", len(st.session_state.transcript))
-
+        st.metric("Turns", len(st.session_state.transcript))
     else:
-        st.info("Start a conversation to see debug state here.")
+        st.info("Start chatting...")
 
     # ── Leads dashboard ──
     st.markdown("---")
@@ -205,7 +203,7 @@ with col_debug:
 
     # ── Reset ──
     st.markdown("---")
-    if st.button("🔄 Reset Conversation", use_container_width=True):
+    if st.button("🔄 Reset", use_container_width=True):
         st.session_state.agent = LoanCounselorAgent()
         st.session_state.transcript = []
         st.session_state.debug = {}

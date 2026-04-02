@@ -2,8 +2,8 @@
 import os
 import requests
 from dotenv import load_dotenv
-import io
-from pydub import AudioSegment
+# import io
+# from pydub import AudioSegment
 
 load_dotenv()
 
@@ -75,7 +75,7 @@ def transcribe_audio(audio_bytes: bytes, locked_language: str = "english") -> st
     print("\n========== STT DEBUG START ==========")
 
     # Convert audio
-    audio_bytes = convert_to_wav(audio_bytes)
+    # audio_bytes = convert_to_wav(audio_bytes)
     print(f"[DEBUG] Audio bytes after conversion: {len(audio_bytes)}")
 
     language_code = LANGUAGE_CODE_MAP.get(locked_language, "hi-IN")
